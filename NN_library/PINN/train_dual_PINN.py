@@ -5,7 +5,7 @@ from torch.func import vmap, jacrev, grad
 import matplotlib.pyplot as plt
 from save_load import *
 
-def PDE_loss(x, net, a_function, H):
+def PDE_loss_dual(x, net, a_function, H):
     # Ensure x has requires_grad; clone to avoid modifying original tensor
     x = x.clone().detach().requires_grad_(True)
     
@@ -23,7 +23,7 @@ def PDE_loss(x, net, a_function, H):
     H_plus_grad = H + grad_y  # H shape (2,) -> (batch_size, 2)
     
     # Compute K(x) as (batch_size, 2, 2)
-    K = a_function(x)
+    K = torch.linalg.inv(a_function(x))
     
     # Compute q = K @ (H + ∇y) using batched matrix multiplication
     q = torch.bmm(K, H_plus_grad.unsqueeze(-1)).squeeze(-1)  # (batch_size, 2)

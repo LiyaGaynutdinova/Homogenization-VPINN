@@ -19,17 +19,17 @@ class PeriodicLayer(nn.Module):
         self.linear = nn.Linear(1, n)
         self.freq = 2*torch.pi / period_len
         self.amplitude = nn.Parameter(torch.randn(1, n))
-        self.bias = nn.Parameter(torch.randn(1, n))
+        self.bias1 = nn.Parameter(torch.randn(1, n))
+        self.bias2 = nn.Parameter(torch.randn(1, n))
         
     def forward(self, x):
         n_batch = x.shape[0]
         amplitude = self.amplitude.repeat(n_batch, 1)
-        bias = self.amplitude.repeat(n_batch, 1)
-        x1 = self.linear(self.freq * x)
-        x2 = amplitude * x1
-        x3 = x2 + bias
-        x4 = torch.tanh(x3)
-        return x4
+        bias1 = self.bias1.repeat(n_batch, 1)
+        bias2 = self.bias2.repeat(n_batch, 1)
+        x1 = amplitude * torch.cos(self.freq * x + bias1)
+        x2 = torch.tanh(x1 + bias2)
+        return x2
 
 
 class ResidualLayer(nn.Module):
@@ -54,8 +54,6 @@ class PINN(nn.Module):
         self.output_layer = nn.Linear(n_hidden, 1)
 
     def forward(self, x):
-        if len(x.shape)==1:
-            x = x.unsqueeze(0)
         x1 = self.x1_per(x[:,[0]])
         x2 = self.x2_per(x[:,[1]])
         x12 = torch.cat([x1,x2], dim=1)
