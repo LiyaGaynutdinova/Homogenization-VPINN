@@ -4,7 +4,7 @@ import torch.optim as optim
 from save_load import *
 
 
-def PDE_loss(x, net, a_function, H):
+def weak_loss_FE(x, net, test_functions, H):
     # Ensure x has requires_grad; clone to avoid modifying original tensor
     x = x.clone().detach().requires_grad_(True)
     
@@ -22,7 +22,7 @@ def PDE_loss(x, net, a_function, H):
     H_plus_grad = H + grad_y  # H shape (2,) -> (batch_size, 2)
     
     # Compute K(x) as (batch_size, 2, 2)
-    K = a_function(x)
+    K = torch.linalg.inv(a_function(x))
     
     # Compute q = K @ (H + ∇y) using batched matrix multiplication
     q = torch.bmm(K, H_plus_grad.unsqueeze(-1)).squeeze(-1)  # (batch_size, 2)
@@ -54,7 +54,7 @@ def train(net, loaders, args, a_function, H):
 
     # optimizer
     optimizer = optim.Adam(net.parameters(), lr = args['lr'])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=20, threshold = 1e-10, verbose = True, eps=1e-10)
+    #optimizer = optim.LBFGS(net.parameters(), lr = args['lr'])
 
     n_train = len(loaders['train'].dataset)
     n_val = len(loaders['val'].dataset)
@@ -89,14 +89,12 @@ def train(net, loaders, args, a_function, H):
             #x_val.requires_grad_()
             #y_val = net(x_val)
             L_val += PDE_loss(x_val, net, a_function, H).detach().sum().item()
-            
-        scheduler.step(L_val)
-
+        
         losses_train.append(L / n_train)
         losses_val.append(L_val / n_val)
 
         print(f'Epoch: {epoch} mean train loss: {L / n_train : .8e}, mean val. rec. loss: {L_val / n_val : .8e}')
-        if (epoch+1)%1000 == 0:
+        if (epoch+1)%100 == 0:
             save_network(net, args['name'] + f'_{epoch}')
     
     return losses_train, losses_val
