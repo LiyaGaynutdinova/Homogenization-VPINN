@@ -4,7 +4,7 @@ import torch.optim as optim
 from save_load import *
 
 
-def PDE_loss(x, net, a_function, H):
+def PDE_loss(x, net, a_function, H_function):
     # Ensure x has requires_grad; clone to avoid modifying original tensor
     x = x.clone().detach().requires_grad_(True)
     
@@ -19,7 +19,49 @@ def PDE_loss(x, net, a_function, H):
     )[0]
     
     # H + ∇y (broadcast H to batch_size, 2)
-    H_plus_grad = H + grad_y  # H shape (2,) -> (batch_size, 2)
+    H_plus_grad = H_function(x) + grad_y  # H shape (2,) -> (batch_size, 2)
+    
+    # Compute K(x) as (batch_size, 2, 2)
+    K = a_function(x)
+    
+    # Compute q = K @ (H + ∇y) using batched matrix multiplication
+    q = torch.bmm(K, H_plus_grad.unsqueeze(-1)).squeeze(-1)  # (batch_size, 2)
+    
+    # Compute divergence of q: sum of dq_i/dx_i
+    divergence = torch.zeros_like(y)  # (batch_size, 1)
+    for i in range(2):
+        # Get q_i component (batch_size,)
+        q_i = q[:, i]
+        
+        # Compute gradient of q_i w.r.t. x
+        dq_i = torch.autograd.grad(
+            outputs=q_i, inputs=x,
+            grad_outputs=torch.ones_like(q_i),
+            create_graph=True, retain_graph=True
+        )[0]  # (batch_size, 2)
+        
+        # Accumulate the i-th component's derivative
+        divergence += dq_i[:, i].unsqueeze(-1)
+    
+    return divergence**2
+
+
+def PDE_loss_v(x, net, a_function, H_function, v_function):
+    # Ensure x has requires_grad; clone to avoid modifying original tensor
+    x = x.clone().detach().requires_grad_(True)
+    
+    # Forward pass to get y (batch_size, 1)
+    y = net(x) + v_function(x)
+    
+    # Compute ∇y: (batch_size, 2)
+    grad_y = torch.autograd.grad(
+        outputs=y, inputs=x,
+        grad_outputs=torch.ones_like(y),
+        create_graph=True, retain_graph=True
+    )[0]
+    
+    # H + ∇y (broadcast H to batch_size, 2)
+    H_plus_grad = H_function(x) + grad_y  # H shape (2,) -> (batch_size, 2)
     
     # Compute K(x) as (batch_size, 2, 2)
     K = a_function(x)
@@ -47,14 +89,14 @@ def PDE_loss(x, net, a_function, H):
 
 
 
-def train(net, loaders, args, a_function, H):
+def train(net, loaders, args, a_function, H, v_function=None):
 
     # network
     net.to(args['dev'])
 
     # optimizer
     optimizer = optim.Adam(net.parameters(), lr = args['lr'])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=20, threshold = 1e-10, verbose = True, eps=1e-10)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=40, threshold = 1e-10, verbose = True, eps=1e-10)
 
     n_train = len(loaders['train'].dataset)
     n_val = len(loaders['val'].dataset)
@@ -90,7 +132,7 @@ def train(net, loaders, args, a_function, H):
             #y_val = net(x_val)
             L_val += PDE_loss(x_val, net, a_function, H).detach().sum().item()
             
-        scheduler.step(L_val)
+        scheduler.step(L)
 
         losses_train.append(L / n_train)
         losses_val.append(L_val / n_val)

@@ -63,7 +63,7 @@ def get_loaders(data, batch_size):
     n_val = data.__len__() - n_train - n_test
     torch.manual_seed(0)
     train_set, val_set, test_set = torch.utils.data.random_split(data, [n_train, n_val, n_test])
-    train_loader = DataLoader(train_set, batch_size = batch_size, shuffle=True, num_workers=0)
+    train_loader = DataLoader(train_set, batch_size = batch_size, shuffle=False, num_workers=0)
     val_loader = DataLoader(val_set, batch_size = batch_size)
     test_loader = DataLoader(test_set, batch_size = batch_size)
     loaders = {'train' : train_loader, 'val' : val_loader, 'test' : test_loader}
@@ -78,7 +78,7 @@ def get_loaders_Sobol(data, batch_size):
     XY = np.meshgrid(x, y)
     data_val = np.vstack((XY[0].flatten(), XY[1].flatten())).T
     data_val = torch.tensor(data_val, dtype=torch.float)
-    train_loader = DataLoader(data, batch_size = batch_size, shuffle=True, num_workers=0)
+    train_loader = DataLoader(data, batch_size = batch_size, shuffle=False, num_workers=0)
     val_loader = DataLoader(data_val, batch_size = batch_size)
     loaders = {'train' : train_loader, 'val' : val_loader}
     return loaders

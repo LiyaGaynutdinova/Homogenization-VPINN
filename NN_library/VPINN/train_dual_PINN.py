@@ -4,7 +4,7 @@ import torch.optim as optim
 from save_load import *
 
 
-def PDE_loss_dual(x, net, a_function, H):
+def PDE_loss_dual(x, net, a_function, H_function):
     # Ensure x has requires_grad; clone to avoid modifying original tensor
     x = x.clone().detach().requires_grad_(True)
     
@@ -12,8 +12,9 @@ def PDE_loss_dual(x, net, a_function, H):
     q_tilde = net(x)
 
     # Compute K(x) as (batch_size, 2, 2)
-    K = a_function(x)
-    KH = torch.matmul(K, H.view(1,2,1)).squeeze(-1)    # H shape (2,) -> (batch_size, 2)
+    K = a_function(x) 
+    H = H_function(x)
+    KH = torch.matmul(K, H.view(-1,2,1)).squeeze(-1)    # H shape (2,) -> (batch_size, 2)
 
     # q_tilde - KH (broadcast H to batch_size, 2)
     q = q_tilde - KH

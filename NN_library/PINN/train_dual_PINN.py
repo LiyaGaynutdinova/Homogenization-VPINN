@@ -23,7 +23,7 @@ def PDE_loss_dual(x, net, a_function, H):
     curl_u[:,1] = du[:,0]
    
     # H + ∇y (broadcast H to batch_size, 2)
-    H_plus_grad = H + curl_u  # H shape (2,) -> (batch_size, 2)
+    H_plus_grad = H(x) + curl_u  # H shape (2,) -> (batch_size, 2)
    
     # Compute K(x) as (batch_size, 2, 2)
     R = a_function(x)
@@ -93,7 +93,7 @@ def train(net, loaders, args, a_function, H):
             #y_val = net(x_val)
             L_val += PDE_loss_dual(x_val, net, a_function, H).detach().sum().item()
 
-        scheduler.step(L_val)
+        scheduler.step(L)
         
         losses_train.append(L / n_train)
         losses_val.append(L_val / n_val)

@@ -46,37 +46,17 @@ class PINN(nn.Module):
         layer_list = [ResidualLayer(n_hidden) for i in range(n_layers)]
         self.hidden_layers = nn.ModuleList(layer_list)
         self.output_layer = nn.Linear(n_hidden, 1)
+        self.amplitude = nn.Parameter(torch.tensor(1.))
 
     def forward(self, x):
-        x1 = self.x1_per(x[:,[0]])
-        x2 = self.x2_per(x[:,[1]])
+        x_0 = torch.cat([torch.zeros((1, 2), device=x.device), x], dim=0)
+        x1 = self.x1_per(x_0[:,[0]])
+        x2 = self.x2_per(x_0[:,[1]])
         x12 = torch.cat([x1,x2], dim=1)
         x3 = torch.tanh(self.connector(x12))
         x4 = self.hidden_layers[0](x3)
         for i in range(1, len(self.hidden_layers)):
             x4 = self.hidden_layers[i](x4)
-        x5 = self.output_layer(x4)
-        return x5
-        
-
-class PINN_dual(nn.Module):
-    def __init__(self, n_periodic, n_hidden, n_layers, period_len):  
-        super().__init__()
-        self.x1_per = PeriodicLayer(n_periodic, period_len)
-        self.x2_per = PeriodicLayer(n_periodic, period_len)
-        self.connector = nn.Linear(2*n_periodic, n_hidden)
-        layer_list = [ResidualLayer(n_hidden) for i in range(n_layers)]
-        self.hidden_layers = nn.ModuleList(layer_list)
-        self.output_layer = nn.Linear(n_hidden, 2)
-
-    def forward(self, x):
-        x1 = self.x1_per(x[:,[0]])
-        x2 = self.x2_per(x[:,[1]])
-        x12 = torch.cat([x1,x2], dim=1)
-        x3 = torch.tanh(self.connector(x12))
-        x4 = self.hidden_layers[0](x3)
-        for i in range(1, len(self.hidden_layers)):
-            x4 = self.hidden_layers[i](x4)
-        x5 = self.output_layer(x4)
-        return x5
-
+        x5 = torch.abs(self.amplitude) * torch.tanh(self.output_layer(x4))
+        x6 = x5 - x5[0]
+        return x6[1:]
