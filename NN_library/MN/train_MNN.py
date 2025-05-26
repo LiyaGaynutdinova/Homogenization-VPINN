@@ -9,7 +9,7 @@ def train(net, loaders, args, a_function):
     # network
     net.to(args['dev'])
 
-    loss = nn.BCELoss()
+    loss = nn.BCELoss(reduce=None)
 
     # optimizer
     optimizer = optim.Adam(net.parameters(), lr = args['lr'])
@@ -38,24 +38,24 @@ def train(net, loaders, args, a_function):
             optimizer.step()
 
         # calculate the loss and accuracy of the validation set
-        net.eval()
-        if args['dev'] == "cuda":
-            torch.cuda.empty_cache() 
+        #net.eval()
+        #if args['dev'] == "cuda":
+            #torch.cuda.empty_cache() 
         
-        L_val = 0
-        for j, x_val in enumerate(loaders['val']):
-            x_val = x_val.to(args['dev'])
-            y_val = net(x_val)
-            L_val += loss(y_val, a_function(x_val).detach()).detach().sum().item()
+        #L_val = 0
+        #for j, x_val in enumerate(loaders['val']):
+            #x_val = x_val.to(args['dev'])
+            #y_val = net(x_val)
+            #L_val += loss(y_val, a_function(x_val).detach()).detach().sum().item()
             
         #scheduler.step(L_val)
 
         losses_train.append(L / n_train)
-        losses_val.append(L_val / n_val)
+        #losses_val.append(L_val / n_val)
 
         if (epoch+1)%100 == 0:
-            print(f'Epoch: {epoch} mean train loss: {L / n_train : .8e}, mean val. rec. loss: {L_val / n_val : .8e}')
+            print(f'Epoch: {epoch} mean train loss: {L / n_train : .8e}')#, mean val. rec. loss: {L_val / n_val : .8e}')
         if (epoch+1)%1000 == 0:
             save_network(net, args['name'] + f'_{epoch}')
     
-    return losses_train, losses_val
+    return losses_train #, losses_val

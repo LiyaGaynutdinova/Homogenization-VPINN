@@ -56,6 +56,25 @@ class dataset_Sobol(Dataset):
         xy = self.data[idx]
         return xy
 
+class dataset_grid(Dataset):
+    def __init__(self, N, x, y):
+        self.x = x
+        self.y = y
+        x_n = np.linspace(x[0], x[1], N, endpoint=True)
+        y_n = np.linspace(y[0], y[1], N, endpoint=True)
+        XY = np.meshgrid(x_n, y_n)
+        data = np.vstack((XY[0].flatten(), XY[1].flatten())).T
+        self.data = torch.tensor(data, dtype=torch.float)
+
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        xy = self.data[idx]
+        return xy
+
+
 
 def get_loaders(data, batch_size):
     n_train = int(0.8 * data.__len__())
