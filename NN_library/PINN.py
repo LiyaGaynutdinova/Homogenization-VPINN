@@ -73,8 +73,9 @@ class PINN_2(nn.Module):
         y_d = self.dual(x)
         y = torch.cat([y_p, y_d], dim=1)
         return y
+
     
-class PeriodicLayer_relu(nn.Module):
+class PeriodicLayer_softsign(nn.Module):
     def __init__(self, n, period_len):
         super().__init__()
         self.linear = nn.Linear(1, n)
@@ -93,25 +94,25 @@ class PeriodicLayer_relu(nn.Module):
         return x2
 
 
-class LinearLayer_relu(nn.Module):
+class ResidualLayer_softsign(nn.Module):
     def __init__(self, n):
         super().__init__()
         self.linear = nn.Linear(n, n)
         
     def forward(self, x):
-        x1 = self.linear(x)
+        x1 = self.linear(x) + x
         x2 = F.elu(x1)
         return x2
 
-class PINN_relu(nn.Module):
+class PINN_softsign(nn.Module):
     def __init__(self, n_periodic, n_hidden, n_layers, period_len):  
         super().__init__()
-        self.x1_per = PeriodicLayer_relu(n_periodic, period_len)
-        self.x2_per = PeriodicLayer_relu(n_periodic, period_len)
+        self.x1_per = PeriodicLayer_softsign(n_periodic, period_len)
+        self.x2_per = PeriodicLayer_softsign(n_periodic, period_len)
         self.connector = nn.Linear(2*n_periodic, n_hidden)
         layer_list = []
         for i in range(n_layers):
-            layer_list.append(LinearLayer_relu(n_hidden))
+            layer_list.append(ResidualLayer_softsign(n_hidden))
         self.hidden_layers = nn.ModuleList(layer_list)
         self.output_layer = nn.Linear(n_hidden, 1)
 
@@ -119,7 +120,7 @@ class PINN_relu(nn.Module):
         x1 = self.x1_per(x[:,[0]])
         x2 = self.x2_per(x[:,[1]])
         x12 = torch.cat([x1,x2], dim=1)
-        x3 = F.relu(self.connector(x12))
+        x3 = F.elu(self.connector(x12))
         x4 = self.hidden_layers[0](x3)
         for i in range(len(self.hidden_layers)):
             x4 = self.hidden_layers[i](x4)

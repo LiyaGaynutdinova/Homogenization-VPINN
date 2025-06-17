@@ -1,4 +1,5 @@
 import torch
+import copy
 from matplotlib.tri import Triangulation
 
 def PDE_loss(x, net, a_function, H_function):
@@ -40,7 +41,7 @@ def PDE_loss(x, net, a_function, H_function):
         # Accumulate the i-th component's derivative
         divergence += dq_i[:, i].unsqueeze(-1)
     
-    return divergence**2, q
+    return divergence**2, q.detach(), H_plus_grad.detach()
 
 
 def PDE_loss_dual(x, net, a_function, H):
@@ -86,7 +87,111 @@ def PDE_loss_dual(x, net, a_function, H):
 
     curl = dq2[:,0] - dq1[:,1]
     
-    return curl**2, q
+    return curl**2, q.detach(), H_plus_grad.detach()
+
+
+def PDE_loss_int(x, net, a_function, H_function, areas, tri):
+    # Ensure x has requires_grad; clone to avoid modifying original tensor
+    x = x.clone().detach().requires_grad_(True)
+    
+    # Forward pass to get y (batch_size, 1)
+    y = net(x)
+    
+    # Compute ∇y: (batch_size, 2)
+    grad_y = torch.autograd.grad(
+        outputs=y, inputs=x,
+        grad_outputs=torch.ones_like(y),
+        create_graph=True, retain_graph=True
+    )[0]
+    
+    # H + ∇y (broadcast H to batch_size, 2)
+    H_plus_grad = H_function(x) + grad_y  # H shape (2,) -> (batch_size, 2)
+    
+    # Compute K(x) as (batch_size, 2, 2)
+    K = a_function(x)
+    
+    # Compute q = K @ (H + ∇y) using batched matrix multiplication
+    q = torch.bmm(K, H_plus_grad.unsqueeze(-1)).squeeze(-1)  # (batch_size, 2)
+    
+    # Compute divergence of q: sum of dq_i/dx_i
+    divergence = torch.zeros_like(y)  # (batch_size, 1)
+    for i in range(2):
+        # Get q_i component (batch_size,)
+        q_i = q[:, i]
+        
+        # Compute gradient of q_i w.r.t. x
+        dq_i = torch.autograd.grad(
+            outputs=q_i, inputs=x,
+            grad_outputs=torch.ones_like(q_i),
+            create_graph=True, retain_graph=True
+        )[0]  # (batch_size, 2)
+        
+        # Accumulate the i-th component's derivative
+        divergence += dq_i[:, i].unsqueeze(-1)
+
+    residual = divergence**2
+
+    elem = tri.triangles
+    res_tri = residual[elem]
+    prod_mean = res_tri.mean(dim=1).squeeze()
+    tri_int = areas * prod_mean
+    intgr = tri_int.sum()
+    
+    return intgr, q.detach(), H_plus_grad.detach()
+
+
+def PDE_loss_dual_int(x, net, a_function, H, areas, tri):
+    # Ensure x has requires_grad; clone to avoid modifying original tensor
+    x = x.clone().detach().requires_grad_(True)
+    
+    # Forward pass to get y (batch_size, 1)
+    u = net(x)
+    
+    # Compute ∇y: (batch_size, 2)
+    du = torch.autograd.grad(
+        outputs=u, inputs=x,
+        grad_outputs=torch.ones_like(u),
+        create_graph=True, retain_graph=True
+    )[0]
+
+    curl_u = torch.zeros_like(du)
+    curl_u[:,0] = -du[:,1]
+    curl_u[:,1] = du[:,0]
+   
+    # H + ∇y (broadcast H to batch_size, 2)
+    H_plus_grad = H(x) + curl_u  # H shape (2,) -> (batch_size, 2)
+   
+    # Compute K(x) as (batch_size, 2, 2)
+    R = a_function(x)
+    
+    # Compute q = K @ (H + ∇y) using batched matrix multiplication
+    q = torch.bmm(R, H_plus_grad.unsqueeze(-1)).squeeze(-1)  # (batch_size, 2)
+   
+    # Compute gradient of q_1 w.r.t. x
+    dq1 = torch.autograd.grad(
+        outputs=q[:,0], inputs=x,
+        grad_outputs=torch.ones_like(q[:,0]),
+        create_graph=True, retain_graph=True
+    )[0]  # (batch_size, 2)
+
+    # Compute gradient of q_2 w.r.t. x
+    dq2 = torch.autograd.grad(
+        outputs=q[:,1], inputs=x,
+        grad_outputs=torch.ones_like(q[:,1]),
+        create_graph=True, retain_graph=True
+    )[0]  # (batch_size, 2)
+
+    curl = dq2[:,0] - dq1[:,1]
+
+    residual = curl**2
+
+    elem = tri.triangles
+    res_tri = residual[elem]
+    prod_mean = res_tri.mean(dim=1).squeeze()
+    tri_int = areas * prod_mean
+    intgr = tri_int.sum()
+    
+    return intgr, q.detach(), H_plus_grad.detach()
 
 
 def get_areas(x):
@@ -105,13 +210,14 @@ def get_areas(x):
     return torch.tensor(areas), triang
 
 
-def compute_bound(areas, tri, Q_loc, L):
-    # Compute the bound
+def compute_estimate(areas, tri, Q_loc, grad_plus_H, L):
+    # Compute the estimate
     elem = tri.triangles
-    Q_tri = Q_loc[elem]
+    prod = torch.matmul(Q_loc.view(-1,1,2), grad_plus_H.view(-1,2,1)).squeeze()
+    Q_tri = prod[elem]
     prod_mean = Q_tri.mean(dim=1)
-    tri_int = areas.unsqueeze(1) * prod_mean
-    A_h = tri_int.sum(dim=0)
+    tri_int = areas * prod_mean
+    A_h = tri_int.sum()
     
     return A_h / L**2
 
@@ -196,7 +302,7 @@ def weak_loss_primal(x, net, areas, tri, test_functions, a_function, H_function,
    
     L = residual.view(1, n_test) @ G_inv @ residual.view(n_test, 1)
 
-    return L, q
+    return L, q, H_plus_grad
 
 
 def weak_loss_dual(x, net, areas, tri, test_functions, a_function, H_function, G_inv):
@@ -234,7 +340,7 @@ def weak_loss_dual(x, net, areas, tri, test_functions, a_function, H_function, G
    
     L = residual.view(1, n_test) @ G_inv @ residual.view(n_test, 1)
 
-    return L, q
+    return L, q, H_plus_grad
 
 
 def divergence(x, net, a_function, H_function):
@@ -426,30 +532,33 @@ def weak_loss_primal_dual(x, net, areas, tri, test_functions_primal, test_functi
     return L_p, L_d, q_p, q_d
 
 
-def compute_G_grad(x, areas, tri, test_functions):
-    n_test = len(test_functions)
+def compute_G_grad(x, areas, tri, test_functions, grads, G_static):
+    n_static = len(grads)
+    n_test = len(grads)+len(test_functions)
 
     # Ensure x has requires_grad; clone to avoid modifying original tensor
     x = x.clone().detach().requires_grad_(True)
     
     # Forward pass to get y (batch_size, 1)
-    ys = [test_functions[i](x) for i in range(n_test)] 
-
-    grads = []
-    for i in range(n_test):
+    
+    grads_new = copy.copy(grads)
+    for i in range(n_test-n_static):
+        ys = test_functions[i](x)
         # Compute ∇y: (batch_size, 2)
         grad_y = torch.autograd.grad(
-            outputs=ys[i], inputs=x,
-            grad_outputs=torch.ones_like(ys[i]),
+            outputs=ys, inputs=x,
+            grad_outputs=torch.ones_like(ys),
             create_graph=True, retain_graph=True
         )[0]
-        grads.append(grad_y)
+        grads_new.append(grad_y)
     
     G = torch.zeros((n_test, n_test), device=x.device)
+    G += G_static.detach()
     for i in range(n_test):
         for j in range(i, n_test):
-            intgr = compute_int(areas, tri, grads[i], grads[j])
-            G[i,j] = intgr
+            if j>n_static:
+                intgr = compute_int(areas, tri, grads_new[i], grads_new[j])
+                G[i,j] = intgr
   
     return G
 
@@ -469,6 +578,9 @@ def compute_G(x, areas, tri, test_functions):
     for i in range(n_test):
         for j in range(i, n_test):
             intgr = compute_int(areas, tri, ys[i], ys[j])
-            G[i,j] = intgr
+            if i==j:
+                G[i,j] = intgr.detach()
+            else:
+                G[i,j] = intgr
   
     return G

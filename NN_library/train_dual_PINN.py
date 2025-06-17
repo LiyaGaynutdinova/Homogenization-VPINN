@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from save_load import *
-from PDE_losses import PDE_loss_dual, get_areas, compute_bound
+from PDE_losses import PDE_loss_dual, get_areas, compute_estimate
 
 
 def train_dual(net, loaders, args, a_function, H, Lx):
@@ -14,8 +14,6 @@ def train_dual(net, loaders, args, a_function, H, Lx):
     optimizer = optim.Adam(net.parameters(), lr = args['lr'])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=20, threshold = 1e-10, verbose = True, eps=1e-10)
 
-    n_train = len(loaders['train'].dataset)
-    n_val = len(loaders['val'].dataset)
 
     losses_train = []
     losses_val = []
@@ -30,25 +28,14 @@ def train_dual(net, loaders, args, a_function, H, Lx):
             torch.cuda.empty_cache() 
         L = 0
         net.train()
-        l, q = PDE_loss_dual(x, net, a_function, H)
-        bound = compute_bound(areas, tri, q, Lx).detach()
-        bound_inv = bound[0] / (bound[0]**2 - bound[1]**2)
+        l, q, gH = PDE_loss_dual(x, net, a_function, H)
+        bound = compute_estimate(areas, tri, q, gH, Lx).detach()
+        bound_inv = 1 / bound[0]
         loss_batch = l.mean()
         optimizer.zero_grad()
         loss_batch.backward()
         optimizer.step()
         L += loss_batch.detach().item()
-
-        # calculate the loss and accuracy of the validation set
-        #net.eval()
-        #L_val = 0
-        
-        #if args['dev'] == "cuda":
-            #torch.cuda.empty_cache() 
-        
-        #for j, x_val in enumerate(loaders['val']):
-            #x_val = x_val.to(args['dev'])
-            #L_val += PDE_loss_dual(x_val, net, a_function, H).detach().mean().item()
 
         scheduler.step(L)
         

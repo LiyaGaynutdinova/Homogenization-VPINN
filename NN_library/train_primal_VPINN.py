@@ -39,28 +39,19 @@ def train_primal(net, loaders, args, a_function, H, test_functions, G, Lx, int_t
         if args['dev'] == "cuda":
             torch.cuda.empty_cache() 
         net.train()
-        L, q = weak_loss_primal(x, net, areas, tri, g_test, a_function, H, G)
-        bound = compute_bound(areas, tri, q, Lx)[0].item()
+        L, q, gH = weak_loss_primal(x, net, areas, tri, g_test, a_function, H, G)
+        bound = compute_estimate(areas, tri, q, gH, Lx).detach()
         optimizer.zero_grad()
         L.backward()
         optimizer.step()
 
-        #net.eval()
-        #if args['dev'] == "cuda":
-            #torch.cuda.empty_cache() 
-        
-        #L_val = 0
-        #for j, x_val in enumerate(loaders['val']):
-            #x_val = x_val.to(args['dev'])
-            #L_val += PDE_loss(x_val, net, a_function, H).detach().mean().item()
-
         scheduler.step(L)
                 
         losses_train.append(L.detach().item())
-        losses_val.append(bound)
+        losses_val.append(bound.item())
 
 
-        print(f'Epoch: {epoch} mean train loss: {L.detach().item() : .8e}, mean val. loss: {bound : .8e}')
+        print(f'Epoch: {epoch} mean train loss: {L.detach().item() : .8e}, mean val. loss: {bound.item() : .8e}')
         if (epoch+1)%1000 == 0:
             save_network(net, args['name'] + f'_{epoch}')
     

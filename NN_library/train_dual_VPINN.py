@@ -41,21 +41,12 @@ def train_dual(net, loaders, args, a_function, H, test_functions, G, Lx, int_typ
         if args['dev'] == "cuda":
             torch.cuda.empty_cache() 
         net.train()
-        L, q = weak_loss_dual(x, net, areas, tri, g_test, a_function, H, G)
-        bound = compute_bound(areas, tri, q, Lx).detach()
-        bound_inv = bound[0] / (bound[0]**2 - bound[1]**2)
+        L, q, gH = weak_loss_dual(x, net, areas, tri, g_test, a_function, H, G)
+        bound = compute_estimate(areas, tri, q, gH, Lx).detach()
+        bound_inv = 1 / bound
         optimizer.zero_grad()
         L.backward()
         optimizer.step()
-
-        #net.eval()
-        #if args['dev'] == "cuda":
-            #torch.cuda.empty_cache() 
-        
-        #L_val = 0
-        #for j, x_val in enumerate(loaders['val']):
-            #x_val = x_val.to(args['dev'])
-            #L_val += PDE_loss_dual(x_val, net, a_function, H).detach().mean().item()
 
         scheduler.step(L)
         
