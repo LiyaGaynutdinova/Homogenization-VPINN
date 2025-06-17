@@ -41,7 +41,7 @@ def PDE_loss(x, net, a_function, H_function):
         # Accumulate the i-th component's derivative
         divergence += dq_i[:, i].unsqueeze(-1)
     
-    return divergence**2, q.detach(), H_plus_grad.detach()
+    return divergence, q.detach(), H_plus_grad.detach()
 
 
 def PDE_loss_dual(x, net, a_function, H):
@@ -87,7 +87,7 @@ def PDE_loss_dual(x, net, a_function, H):
 
     curl = dq2[:,0] - dq1[:,1]
     
-    return curl**2, q.detach(), H_plus_grad.detach()
+    return curl, q.detach(), H_plus_grad.detach()
 
 
 def PDE_loss_int(x, net, a_function, H_function, areas, tri):
