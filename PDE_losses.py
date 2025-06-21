@@ -213,7 +213,7 @@ def get_areas(x):
 def compute_estimate(areas, tri, Q_loc, grad_plus_H, L):
     # Compute the estimate
     elem = tri.triangles
-    prod = torch.matmul(Q_loc.view(-1,1,2), grad_plus_H.view(-1,2,1)).squeeze()
+    prod = torch.matmul(grad_plus_H.view(-1,1,2), Q_loc.view(-1,2,1)).squeeze()
     Q_tri = prod[elem]
     prod_mean = Q_tri.mean(dim=1)
     tri_int = areas * prod_mean
